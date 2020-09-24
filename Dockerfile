@@ -371,3 +371,19 @@ RUN apk add --no-cache \
     && ln -s /usr/bin/python3 /usr/bin/python
 
 # Order layers starting with less frequently varying ones
+
+COPY --from=builder  /build_thirdparty/usr/ /gdal/build_thirdparty/usr/
+
+COPY --from=builder  /build_projgrids/usr/ /gdal/build_projgrids/usr/
+
+COPY --from=builder  /build_spatialite/usr/ /gdal/build_spatialite/usr/
+
+COPY --from=builder  /build_proj/usr/share/proj/ /gdal/build_proj/usr/share/proj/
+COPY --from=builder  /build_proj/usr/include/ /gdal/build_proj/usr/include/
+COPY --from=builder  /build_proj/usr/bin/ /gdal/build_proj/usr/bin/
+COPY --from=builder  /build_proj/usr/lib/ /gdal/build_proj/usr/lib/
+
+COPY --from=builder  /build/usr/share/gdal/ /gdal/build/usr/share/gdal/
+COPY --from=builder  /build/usr/include/ /gdal/build/usr/include/
+COPY --from=builder  /build_gdal_python/usr/ /gdal/build_gdal_python/usr/
+COPY --from=builder  /build_gdal_version_changing/usr/  /gdal/build_gdal_version_changing/usr/
