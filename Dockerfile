@@ -1,168 +1,41 @@
 ##
-# osgeo/gdal:alpine-normal
+# osgeo/gdal:ubuntu-small
 
 # This file is available at the option of the licensee under:
 # Public domain
 # or licensed under X/MIT (LICENSE.TXT) Copyright 2019 Even Rouault <even.rouault@spatialys.com>
 
-ARG ALPINE_VERSION=3.12
-FROM alpine:${ALPINE_VERSION} as builder
+ARG PROJ_INSTALL_PREFIX=/usr/local
+ARG BASE_IMAGE=ubuntu:20.04
+
+FROM $BASE_IMAGE as builder
 
 # Derived from osgeo/proj by Howard Butler <howard@hobu.co>
 LABEL maintainer="Even Rouault <even.rouault@spatialys.com>"
 
-
 # Setup build env for PROJ
-RUN apk add --no-cache wget curl unzip make libtool autoconf automake pkgconfig g++ sqlite sqlite-dev
+RUN apt-get update -y \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing --no-install-recommends \
+            software-properties-common build-essential ca-certificates \
+            git make cmake wget unzip libtool automake \
+            zlib1g-dev libsqlite3-dev pkg-config sqlite3 libcurl4-gnutls-dev \
+            libtiff5-dev
 
-ARG PROJ_DATUMGRID_LATEST_LAST_MODIFIED
-RUN \
-    mkdir -p /build_projgrids/usr/share/proj \
-    && curl -LOs http://download.osgeo.org/proj/proj-datumgrid-latest.zip \
-    && unzip -q -j -u -o proj-datumgrid-latest.zip  -d /build_projgrids/usr/share/proj \
-    && rm -f *.zip
-
-# For PROJ and GDAL
-ARG POPPLER_DEV=poppler-dev
-RUN apk add --no-cache \
-    linux-headers \
-    curl-dev tiff-dev \
-    zlib-dev zstd-dev \
-    libjpeg-turbo-dev libpng-dev openjpeg-dev libwebp-dev expat-dev \
-    py3-numpy-dev python3-dev py3-numpy \
-    ${POPPLER_DEV} postgresql-dev \
-    openexr-dev libheif-dev xerces-c-dev geos-dev cfitsio-dev \
-    # For spatialite (and GDAL)
-    libxml2-dev \
-    && mkdir -p /build_thirdparty/usr/lib
-
-# Build geos
-ARG GEOS_VERSION=
-RUN if test "${GEOS_VERSION}" != ""; then ( \
-    wget -q http://download.osgeo.org/geos/geos-${GEOS_VERSION}.tar.bz2 \
-    && tar xjf geos-${GEOS_VERSION}.tar.bz2  \
-    && rm -f geos-${GEOS_VERSION}.tar.bz2 \
-    && cd geos-${GEOS_VERSION} \
-    && ./configure --prefix=/usr --disable-static \
-    && make -j$(nproc) \
-    && make install \
-    && cp -P /usr/lib/libgeos*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf geos-${GEOS_VERSION} \
-    ); fi
-
-# Build szip
-ARG SZIP_VERSION=2.1.1
-RUN if test "${SZIP_VERSION}" != ""; then ( \
-    wget -q https://support.hdfgroup.org/ftp/lib-external/szip/${SZIP_VERSION}/src/szip-${SZIP_VERSION}.tar.gz \
-    && tar xzf szip-${SZIP_VERSION}.tar.gz \
-    && rm -f szip-${SZIP_VERSION}.tar.gz \
-    && cd szip-${SZIP_VERSION} \
-    && CFLAGS=-O2 ./configure --prefix=/usr --disable-static \
-    && make -j$(nproc) \
-    && make install \
-    && cp -P /usr/lib/libsz*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf szip-${SZIP_VERSION} \
-    ); fi
-
-# Build hdf5
-ARG HDF5_VERSION=1.12.0
-RUN if test "${HDF5_VERSION}" != ""; then ( \
-    wget -q https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-${HDF5_VERSION%.*}/hdf5-${HDF5_VERSION}/src/hdf5-${HDF5_VERSION}.tar.gz \
-    && tar xzf hdf5-${HDF5_VERSION}.tar.gz \
-    && rm -f hdf5-${HDF5_VERSION}.tar.gz \
-    && cd hdf5-${HDF5_VERSION} \
-    && CFLAGS=-O2 CXXFLAGS=-O2 ./configure --prefix=/usr --disable-static --with-szlib=/usr --enable-cxx \
-    && make -j$(nproc) \
-    && make install \
-    && cp -P /usr/lib/libhdf5*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf hdf5-${HDF5_VERSION} \
-    ); fi
-
-# Build netCDF
-ARG NETCDF_VERSION=4.7.4
-RUN if test "${NETCDF_VERSION}" != ""; then ( \
-    apk add --no-cache libexecinfo-dev \
-    && wget -q https://github.com/Unidata/netcdf-c/archive/v${NETCDF_VERSION}.tar.gz \
-    && tar xzf v${NETCDF_VERSION}.tar.gz \
-    && rm -f v${NETCDF_VERSION}.tar.gz \
-    && cd netcdf-c-${NETCDF_VERSION} \
-    && CFLAGS=-O2 ./configure --prefix=/usr --disable-static \
-    && make -j$(nproc) \
-    && make install \
-    && cp -P /usr/lib/libnetcdf*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf netcdf-c-${NETCDF_VERSION} \
-    && apk del libexecinfo-dev \
-    ); fi
-
-# Build hdf4
-ARG HDF4_VERSION=4.2.15
-RUN if test "${HDF4_VERSION}" != ""; then ( \
-    apk add --no-cache byacc flex portablexdr-dev \
-    && mkdir hdf4 \
-    && wget -q https://support.hdfgroup.org/ftp/HDF/releases/HDF${HDF4_VERSION}/src/hdf-${HDF4_VERSION}.tar.gz -O - \
-        | tar xz -C hdf4 --strip-components=1 \
-    && cd hdf4 \
-    && LDFLAGS=-lportablexdr ./configure --prefix=/usr --enable-shared --disable-static \
-        --with-szlib=/usr --disable-fortran --disable-netcdf \
-    && make -j$(nproc) \
-    && make install \
-    && cp -P /usr/lib/libdf*.so* /build_thirdparty/usr/lib \
-    && cp -P /usr/lib/libmfhdf*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf hdf4 \
-    && apk del byacc flex portablexdr-dev \
-    ); fi
-
-# Build freexl
-ARG FREEXL_VERSION=1.0.6
-RUN if test "${FREEXL_VERSION}" != ""; then ( \
-    wget -q http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-${FREEXL_VERSION}.tar.gz \
-    && tar xzf freexl-${FREEXL_VERSION}.tar.gz \
-    && rm -f freexl-${FREEXL_VERSION}.tar.gz \
-    && cd freexl-${FREEXL_VERSION} \
-    && ./configure --prefix=/usr --disable-static \
-    && make -j$(nproc) \
-    && make install \
-    && cp -P /usr/lib/libfreexl*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf freexl-${FREEXL_VERSION} \
-    ); fi
-
-# Build likbkea
-ARG KEA_VERSION=1.4.13
-RUN if test "${KEA_VERSION}" != ""; then ( \
-    apk add --no-cache cmake \
-    && wget -q https://github.com/ubarsc/kealib/archive/kealib-${KEA_VERSION}.zip \
-    && unzip -q kealib-${KEA_VERSION}.zip \
-    && rm -f kealib-${KEA_VERSION}.zip \
-    && cd kealib-kealib-${KEA_VERSION} \
-    && cmake . -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr -DHDF5_INCLUDE_DIR=/usr/include/hdf5 \
-        -DHDF5_LIB_PATH=/usr/lib -DLIBKEA_WITH_GDAL=OFF \
-    && make -j$(nproc) \
-    && make install \
-    && cd .. \
-    && rm -rf kealib-kealib-${KEA_VERSION} \
-    && cp -P /usr/lib/libkea*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && apk del cmake \
-    ); fi
+# Setup build env for GDAL
+RUN apt-get update -y \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing --no-install-recommends \
+       python3-dev python3-numpy \
+       libjpeg-dev libgeos-dev \
+       libexpat-dev libxerces-c-dev \
+       libwebp-dev \
+       libzstd-dev bash zip curl \
+       libpq-dev libssl-dev libopenjp2-7-dev \
+       autoconf automake sqlite3 bash-completion
 
 # Build openjpeg
-# ARG OPENJPEG_VERSION=2.3.1
+ARG OPENJPEG_VERSION=
 RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
-    apk add --no-cache cmake \
-    && wget -q https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
+    wget -q https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
     && tar xzf v${OPENJPEG_VERSION}.tar.gz \
     && rm -f v${OPENJPEG_VERSION}.tar.gz \
     && cd openjpeg-${OPENJPEG_VERSION} \
@@ -170,15 +43,23 @@ RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
         -DCMAKE_INSTALL_PREFIX=/usr \
     && make -j$(nproc) \
     && make install \
-    && rm -f /usr/lib/libopenjp2.so.2.3.0 \
+    && mkdir -p /build_thirdparty/usr/lib \
     && cp -P /usr/lib/libopenjp2*.so* /build_thirdparty/usr/lib \
     && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
     && cd .. \
     && rm -rf openjpeg-${OPENJPEG_VERSION} \
-    && apk del cmake \
     ); fi
 
-RUN apk add --no-cache rsync ccache
+ARG PROJ_INSTALL_PREFIX
+ARG PROJ_DATUMGRID_LATEST_LAST_MODIFIED
+RUN \
+    mkdir -p /build_projgrids/${PROJ_INSTALL_PREFIX}/share/proj \
+    && curl -LOs http://download.osgeo.org/proj/proj-datumgrid-latest.zip \
+    && unzip -q -j -u -o proj-datumgrid-latest.zip  -d /build_projgrids/${PROJ_INSTALL_PREFIX}/share/proj \
+    && rm -f *.zip
+
+RUN apt-get update -y \
+    && apt-get install -y --fix-missing --no-install-recommends rsync ccache
 ARG RSYNC_REMOTE
 
 # Build PROJ
@@ -197,10 +78,10 @@ RUN mkdir proj \
         export PROJ_DB_CACHE_DIR="$HOME/.ccache"; \
         ccache -M 100M; \
     fi \
-    && ./configure --prefix=/usr --disable-static --enable-lto \
+    && CFLAGS='-DPROJ_RENAME_SYMBOLS -O2' CXXFLAGS='-DPROJ_RENAME_SYMBOLS -DPROJ_INTERNAL_CPP_NAMESPACE -O2' \
+        ./configure --prefix=${PROJ_INSTALL_PREFIX} --disable-static \
     && make -j$(nproc) \
-    && make install \
-    && make install DESTDIR="/build_proj" \
+    && make install DESTDIR="/build" \
     && if test "${RSYNC_REMOTE}" != ""; then \
         ccache -s; \
         echo "Uploading cache..."; \
@@ -212,45 +93,15 @@ RUN mkdir proj \
     fi \
     && cd .. \
     && rm -rf proj \
-    && for i in /build_proj/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && for i in /build_proj/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
-
-# Build spatialite
-ARG SPATIALITE_VERSION=5.0.0
-RUN if test "${SPATIALITE_VERSION}" != ""; then ( \
-    wget -q http://www.gaia-gis.it/gaia-sins/libspatialite-${SPATIALITE_VERSION}.tar.gz \
-    && tar xzf libspatialite-${SPATIALITE_VERSION}.tar.gz \
-    && rm -f libspatialite-${SPATIALITE_VERSION}.tar.gz \
-    && cd libspatialite-${SPATIALITE_VERSION} \
-    && apk add --no-cache minizip-dev \
-    && if test "${RSYNC_REMOTE}" != ""; then \
-        echo "Downloading cache..."; \
-        rsync -ra ${RSYNC_REMOTE}/spatialite/ $HOME/; \
-        echo "Finished"; \
-        export CC="ccache gcc"; \
-        export CXX="ccache g++"; \
-        ccache -M 100M; \
-    fi \
-    && ./configure --prefix=/usr --disable-static \
-    && make -j$(nproc) \
-    && make install \
-    && if test "${RSYNC_REMOTE}" != ""; then \
-        ccache -s; \
-        echo "Uploading cache..."; \
-        rsync -ra --delete $HOME/.ccache ${RSYNC_REMOTE}/spatialite/; \
-        echo "Finished"; \
-        rm -rf $HOME/.ccache; \
-        unset CC; \
-        unset CXX; \
-    fi \
-    && mkdir -p /build_spatialite/usr/lib \
-    && cp -P /usr/lib/libspatialite*.so* /build_spatialite/usr/lib \
-    && for i in /build_spatialite/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf libspatialite-${SPATIALITE_VERSION} \
-    ); else \
-        mkdir -p /build_spatialite/usr/lib; \
-    fi
+    && PROJ_SO=$(readlink /build${PROJ_INSTALL_PREFIX}/lib/libproj.so | sed "s/libproj\.so\.//") \
+    && PROJ_SO_FIRST=$(echo $PROJ_SO | awk 'BEGIN {FS="."} {print $1}') \
+    && mv /build${PROJ_INSTALL_PREFIX}/lib/libproj.so.${PROJ_SO} /build${PROJ_INSTALL_PREFIX}/lib/libinternalproj.so.${PROJ_SO} \
+    && ln -s libinternalproj.so.${PROJ_SO} /build${PROJ_INSTALL_PREFIX}/lib/libinternalproj.so.${PROJ_SO_FIRST} \
+    && ln -s libinternalproj.so.${PROJ_SO} /build${PROJ_INSTALL_PREFIX}/lib/libinternalproj.so \
+    && rm /build${PROJ_INSTALL_PREFIX}/lib/libproj.*  \
+    && ln -s libinternalproj.so.${PROJ_SO} /build${PROJ_INSTALL_PREFIX}/lib/libproj.so.${PROJ_SO_FIRST} \
+    && strip -s /build${PROJ_INSTALL_PREFIX}/lib/libinternalproj.so.${PROJ_SO} \
+    && for i in /build${PROJ_INSTALL_PREFIX}/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build GDAL
 ARG GDAL_VERSION=master
@@ -263,31 +114,6 @@ RUN if test "${GDAL_VERSION}" = "master"; then \
     && if test "x${GDAL_BUILD_IS_RELEASE}" = "x"; then \
         export GDAL_SHA1SUM=${GDAL_VERSION}; \
     fi \
-    && export GDAL_EXTRA_ARGS="" \
-    && if test "${GEOS_VERSION}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-geos ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && if test "${XERCESC_VERSION}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-xerces ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && if test "${HDF4_VERSION}" != ""; then \
-        apk add --no-cache portablexdr-dev \
-        && export LDFLAGS="-lportablexdr ${LDFLAGS}" \
-        && export GDAL_EXTRA_ARGS="--with-hdf4 ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && if test "${HDF5_VERSION}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-hdf5 ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && if test "${NETCDF_VERSION}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-netcdf ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && if test "${SPATIALITE_VERSION}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-spatialite ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && if test "${POPPLER_DEV}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-poppler ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && echo ${GDAL_EXTRA_ARGS} \
     && mkdir gdal \
     && wget -q https://github.com/OSGeo/gdal/archive/${GDAL_VERSION}.tar.gz -O - \
         | tar xz -C gdal --strip-components=1 \
@@ -307,12 +133,11 @@ RUN if test "${GDAL_VERSION}" = "master"; then \
     fi \
     && ./configure --prefix=/usr --without-libtool \
     --with-hide-internal-symbols \
-    --with-proj=/usr \
+    --with-jpeg12 \
+    --with-python \
+    --with-webp --with-proj=/build${PROJ_INSTALL_PREFIX} \
     --with-libtiff=internal --with-rename-internal-libtiff-symbols \
     --with-geotiff=internal --with-rename-internal-libgeotiff-symbols \
-    # --enable-lto
-    ${GDAL_EXTRA_ARGS} \
-    --with-python \
     && make -j$(nproc) \
     && make install DESTDIR="/build" \
     && if test "${RSYNC_REMOTE}" != ""; then \
@@ -329,61 +154,52 @@ RUN if test "${GDAL_VERSION}" = "master"; then \
     && mkdir -p /build_gdal_python/usr/lib \
     && mkdir -p /build_gdal_python/usr/bin \
     && mkdir -p /build_gdal_version_changing/usr/include \
-    && mv /build/usr/lib/python3.8          /build_gdal_python/usr/lib \
+    && mv /build/usr/lib/python3            /build_gdal_python/usr/lib \
     && mv /build/usr/lib                    /build_gdal_version_changing/usr \
     && mv /build/usr/include/gdal_version.h /build_gdal_version_changing/usr/include \
     && mv /build/usr/bin/*.py               /build_gdal_python/usr/bin \
     && mv /build/usr/bin                    /build_gdal_version_changing/usr \
     && for i in /build_gdal_version_changing/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && for i in /build_gdal_python/usr/lib/python3.8/site-packages/osgeo/*.so; do strip -s $i 2>/dev/null || /bin/true; done \
-    && for i in /build_gdal_version_changing/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    # Remove resource files of uncompiled drivers
-    && (for i in \
-            # unused
-            /build/usr/share/gdal/*.svg \
-            # unused
-            /build/usr/share/gdal/*.png \
-       ;do rm $i; done)
+    && for i in /build_gdal_python/usr/lib/python3/dist-packages/osgeo/*.so; do strip -s $i 2>/dev/null || /bin/true; done \
+    && for i in /build_gdal_version_changing/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build final image
-FROM alpine:${ALPINE_VERSION} as runner
+FROM $BASE_IMAGE as runner
 
 RUN date
 
-ARG POPPLER=poppler
-RUN apk add --no-cache \
-        libstdc++ \
-        sqlite-libs \
-        libcurl tiff \
-        zlib zstd-libs\
-        libjpeg-turbo libpng libwebp expat \
-        icu-libs \
-        python3 py3-numpy ${POPPLER} pcre libpq libxml2 portablexdr openjpeg \
-        openexr libheif xerces-c geos cfitsio minizip \
-    # Remove /usr/lib/libopenjp2.so.2.3.0 since we are building v2.3.1 manually
-    # && rm -f /usr/lib/libopenjp2.so.2.3.0 \
-    # libturbojpeg.so is not used by GDAL. Only libjpeg.so*
-    && rm -f /usr/lib/libturbojpeg.so* \
-    # libpoppler-cpp.so is not used by GDAL. Only libpoppler.so*
-    && rm -f /usr/lib/libpoppler-cpp.so* \
-    # Only libwebp.so is used by GDAL
-    && rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
-    && ln -s /usr/bin/python3 /usr/bin/python
+# PROJ dependencies
+RUN apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y  --no-install-recommends \
+        libsqlite3-0 libtiff5 libcurl4 \
+        curl unzip ca-certificates
+
+# GDAL dependencies
+RUN apt-get update -y; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y  --no-install-recommends \
+        python3-numpy libpython3.8 \
+        libjpeg-turbo8 libgeos-3.8.0 libgeos-c1v5 \
+        libexpat1 \
+        libxerces-c3.2 \
+        libwebp6 \
+        libzstd1 bash libpq5 libssl1.1 libopenjp2-7
+
+RUN apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python-is-python3
 
 # Order layers starting with less frequently varying ones
+# Only used for custom libopenjp2
+# COPY --from=builder  /build_thirdparty/usr/ /usr/
 
-COPY --from=builder  /build_thirdparty/usr/ /gdal/build_thirdparty/usr/
+COPY --from=builder  /build_projgrids/usr/ /usr/
 
-COPY --from=builder  /build_projgrids/usr/ /gdal/build_projgrids/usr/
+ARG PROJ_INSTALL_PREFIX
+COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/share/proj/ ${PROJ_INSTALL_PREFIX}/share/proj/
+COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/include/ ${PROJ_INSTALL_PREFIX}/include/
+COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/bin/ ${PROJ_INSTALL_PREFIX}/bin/
+COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/lib/ ${PROJ_INSTALL_PREFIX}/lib/
 
-COPY --from=builder  /build_spatialite/usr/ /gdal/build_spatialite/usr/
-
-COPY --from=builder  /build_proj/usr/share/proj/ /gdal/build_proj/usr/share/proj/
-COPY --from=builder  /build_proj/usr/include/ /gdal/build_proj/usr/include/
-COPY --from=builder  /build_proj/usr/bin/ /gdal/build_proj/usr/bin/
-COPY --from=builder  /build_proj/usr/lib/ /gdal/build_proj/usr/lib/
-
-COPY --from=builder  /build/usr/share/gdal/ /gdal/build/usr/share/gdal/
-COPY --from=builder  /build/usr/include/ /gdal/build/usr/include/
-COPY --from=builder  /build_gdal_python/usr/ /gdal/build_gdal_python/usr/
-COPY --from=builder  /build_gdal_version_changing/usr/  /gdal/build_gdal_version_changing/usr/
+COPY --from=builder  /build/usr/share/gdal/ /usr/share/gdal/
+COPY --from=builder  /build/usr/include/ /usr/include/
+COPY --from=builder  /build_gdal_python/usr/ /usr/
+COPY --from=builder  /build_gdal_version_changing/usr/ /usr/
