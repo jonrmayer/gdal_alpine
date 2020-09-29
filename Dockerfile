@@ -191,7 +191,7 @@ RUN apt-get update; \
 # Only used for custom libopenjp2
 # COPY --from=builder  /build_thirdparty/usr/ /usr/
 
-COPY --from=builder  /build_projgrids/${PROJ_INSTALL_PREFIX}/usr/ ${PROJ_INSTALL_PREFIX}/usr/
+#COPY --from=builder  /build_projgrids/${PROJ_INSTALL_PREFIX}/usr/ ${PROJ_INSTALL_PREFIX}/usr/
 
 ARG PROJ_INSTALL_PREFIX
 COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/share/proj/ ${PROJ_INSTALL_PREFIX}/share/proj/
