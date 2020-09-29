@@ -5,7 +5,7 @@
 # Public domain
 # or licensed under X/MIT (LICENSE.TXT) Copyright 2019 Even Rouault <even.rouault@spatialys.com>
 
-ARG PROJ_INSTALL_PREFIX=/usr/local
+ARG PROJ_INSTALL_PREFIX=/gdal
 ARG BASE_IMAGE=ubuntu:20.04
 
 FROM $BASE_IMAGE as builder
@@ -199,7 +199,7 @@ COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/include/ ${PROJ_INSTALL_PREFIX
 COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/bin/ ${PROJ_INSTALL_PREFIX}/bin/
 COPY --from=builder  /build${PROJ_INSTALL_PREFIX}/lib/ ${PROJ_INSTALL_PREFIX}/lib/
 
-COPY --from=builder  /build/usr/share/gdal/ /usr/share/gdal/
-COPY --from=builder  /build/usr/include/ /usr/include/
-COPY --from=builder  /build_gdal_python/usr/ /usr/
-COPY --from=builder  /build_gdal_version_changing/usr/ /usr/
+COPY --from=builder  /build/usr/share/gdal/ ${PROJ_INSTALL_PREFIX}/usr/share/gdal/
+COPY --from=builder  /build/usr/include/ ${PROJ_INSTALL_PREFIX}/usr/include/
+COPY --from=builder  /build_gdal_python/usr/ ${PROJ_INSTALL_PREFIX}/build_gdal_python/usr/
+COPY --from=builder  /build_gdal_version_changing/usr/ ${PROJ_INSTALL_PREFIX}/build_gdal_version_changing/usr/
