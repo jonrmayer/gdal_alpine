@@ -29,7 +29,7 @@ RUN apt-get update -y \
        libexpat-dev libxerces-c-dev \
        libwebp-dev \
        libzstd-dev bash zip curl \
-       libpq-dev libssl-dev libopenjp2-7-dev \
+       libpq-dev libssl-dev=1.0.2g-1ubuntu4.17 libopenjp2-7-dev \
        autoconf automake sqlite3 bash-completion
 
 # Build openjpeg
@@ -182,7 +182,7 @@ RUN apt-get update -y; \
         libexpat1 \
         libxerces-c3.2 \
         libwebp6 \
-        libzstd1 bash libpq5 libssl1.1 libopenjp2-7
+        libzstd1 bash libpq5 libssl1.0 libopenjp2-7
 
 RUN apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y python-is-python3
